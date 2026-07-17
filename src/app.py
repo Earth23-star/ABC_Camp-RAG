@@ -1,4 +1,4 @@
-﻿"""YES24 IT / Mobile Bestseller Analysis (EDA) and Recommendation Streamlit App
+"""YES24 IT / Mobile Bestseller Analysis (EDA) and Recommendation Streamlit App
 
 Loads book data from data/yes24_it_mobile_bestsellers.csv, provides various
 statistics and charts, and offers a keyword based book search feature.
@@ -465,12 +465,19 @@ with tab_chat:
     if "embedding_ready" not in st.session_state:
         st.session_state.embedding_ready = False
 
+    # Auto-load the committed index so the chatbot works in deployment.
+    from embedding_store import EmbeddingStore
+    if "embedding_store" not in st.session_state:
+        _store = EmbeddingStore()
+        if _store.exists():
+            st.session_state.embedding_store = _store
+            st.session_state.embedding_ready = True
+
     with st.expander("Vector DB Management", expanded=False):
         col1, col2 = st.columns([3, 1])
         with col1:
-            if st.button("Build Vector Index (first time only)"):
+            if st.button("Rebuild Vector Index"):
                 with st.spinner("Building ChromaDB index..."):
-                    from embedding_store import EmbeddingStore
                     store = EmbeddingStore()
                     count = store.build_index(df_raw)
                     st.session_state.embedding_store = store
