@@ -146,8 +146,10 @@ def load_data(file_path: str) -> pd.DataFrame:
         
     return df
 
-# Data file path setting
-DATA_PATH = os.path.join("data", "yes24_it_mobile_bestsellers.csv")
+# Data file path setting (resolve relative to repo root so it works
+# regardless of the Streamlit working directory)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_PATH = os.path.join(BASE_DIR, "data", "yes24_it_mobile_bestsellers.csv")
 df_raw = load_data(DATA_PATH)
 
 # Data load check
