@@ -1,7 +1,7 @@
-﻿"""YES24 IT 紐⑤컮??踰좎뒪?몄????먯깋???곗씠??遺꾩꽍(EDA) 諛??꾩꽌 寃??Streamlit ??쒕낫??
+﻿"""YES24 IT / Mobile Bestseller Analysis (EDA) and Recommendation Streamlit App
 
-??紐⑤뱢? data/yes24_it_mobile_bestsellers.csv ?곗씠?곕? 遺덈윭?
-?ㅼ뼇???듦퀎 吏?쒖? ?쒓컖??李⑦듃瑜??쒓났?섍퀬, ?꾩꽌 ?쒕ぉ 諛??곸꽭 ?뚭컻 湲 湲곕컲???ㅼ썙??寃???붿쭊???쒓났?⑸땲??
+Loads book data from data/yes24_it_mobile_bestsellers.csv, provides various
+statistics and charts, and offers a keyword based book search feature.
 """
 
 import os
@@ -13,15 +13,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 from groq import Groq
 
-# 1. ?섏씠吏 ?ㅼ젙 諛??꾨━誘몄뾼 ?ㅽ????뺤쓽
+# 1. Page configuration
 st.set_page_config(
-    page_title="YES24 IT 紐⑤컮??踰좎뒪?몄?????쒕낫??,
-    page_icon="?뱴",
+    page_title="YES24 IT / Mobile Bestseller Analysis",
+    page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 而ㅼ뒪? CSS ?곸슜?쇰줈 ?붿옄??媛쒖꽑 (?꾨━誘몄뾼 猷⑹븻??
+# Custom CSS for improved UI (premium look)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
@@ -86,34 +86,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 2. ?곗씠??濡쒕뱶 諛??꾩쿂由??⑥닔
+# 2. Data loading function
 @st.cache_data
 def load_data(file_path: str) -> pd.DataFrame:
-    """CSV ?곗씠?곕? 濡쒕뱶?섍퀬 遺꾩꽍???⑹씠?섍쾶 ?뺤젣?쒕떎.
+    """Load CSV file and perform basic preprocessing for analysis.
 
-    - Publish Date?먯꽌 ?곕룄 諛???異붿텧
-    - Rating, Sale Price, Original Price ?깆쓽 寃곗륫 泥섎━
-    - Discount Rate瑜??섏튂?뺤쑝濡??뺤젣
+    - Extract year/month from Publish Date
+    - Handle missing values for Rating, Sale Price, Original Price
+    - Convert Discount Rate to numeric
 
     Args:
-        file_path: 遺덈윭??CSV ?뚯씪 寃쎈줈.
+        file_path: Path to the CSV file to load.
 
     Returns:
-        ?뺤젣??pandas DataFrame.
+        Preprocessed pandas DataFrame.
     """
     if not os.path.exists(file_path):
         return pd.DataFrame()
         
     df = pd.read_csv(file_path)
     
-    # 1. Publish Date ?뚯떛 (?? "2026??05?? -> 2026, 5)
+    # 1. Parse Publish Date (e.g. "2026-05" -> 2026, 5)
     def parse_year_month(date_str):
         if not isinstance(date_str, str):
             return None, None
-        match = re.search(r'(\d{4})??s*(\d{2})??, date_str)
+        match = re.search(r'(\d{4})\s*(\d{2})', date_str)
         if match:
             return int(match.group(1)), int(match.group(2))
-        # "2026.05" ?뱀? ?좎궗 ?뺤떇 ?뚯떛 ?쒕룄
+        # also handle "2026.05" style dates
         match_alt = re.search(r'(\d{4})[-.](\d{2})', date_str)
         if match_alt:
             return int(match_alt.group(1)), int(match_alt.group(2))
@@ -123,7 +123,7 @@ def load_data(file_path: str) -> pd.DataFrame:
         parsed = df['Publish Date'].apply(parse_year_month)
         df['Publish Year'] = [p[0] for p in parsed]
         df['Publish Month'] = [p[1] for p in parsed]
-        # ?쒓퀎?댁슜 媛???좎쭨 而щ읆 ?앹꽦 (?붿큹 湲곗?)
+        # build a proper datetime column for trend analysis
         df['Publish YearMonth'] = pd.to_datetime(
             df.apply(
                 lambda row: f"{int(row['Publish Year'])}-{int(row['Publish Month']):02d}-01" 
@@ -133,104 +133,108 @@ def load_data(file_path: str) -> pd.DataFrame:
             )
         )
         
-    # 2. Discount Rate ?섏튂 蹂??(?? "10%" -> 10)
+    # 2. Convert Discount Rate (e.g. "10%" -> 10)
     if 'Discount Rate' in df.columns:
         df['Discount Rate Numeric'] = df['Discount Rate'].astype(str).str.replace('%', '', regex=False)
         df['Discount Rate Numeric'] = pd.to_numeric(df['Discount Rate Numeric'], errors='coerce').fillna(0)
         
-    # 3. Description 鍮?媛?梨꾩슦湲?    if 'Description' in df.columns:
-        df['Description'] = df['Description'].fillna("?깅줉??梨??뚭컻 ?뺣낫媛 ?놁뒿?덈떎.")
+    # 3. Fill missing Description
+    if 'Description' in df.columns:
+        df['Description'] = df['Description'].fillna("No detailed description available.")
     else:
-        df['Description'] = "?깅줉??梨??뚭컻 ?뺣낫媛 ?놁뒿?덈떎."
+        df['Description'] = "No detailed description available."
         
     return df
 
-# ?곗씠???뚯씪 寃쎈줈 ?ㅼ젙
+# Data file path setting
 DATA_PATH = os.path.join("data", "yes24_it_mobile_bestsellers.csv")
 df_raw = load_data(DATA_PATH)
 
-# ?곗씠??濡쒕뱶 寃利?if df_raw.empty:
-    st.error("?좑툘 ?곗씠?곕? 遺덈윭?????놁뒿?덈떎. 'data/yes24_it_mobile_bestsellers.csv' ?뚯씪??議댁옱?섎뒗吏 ?뺤씤??二쇱꽭??")
-    st.info("?뮕 ?ㅽ겕?섑띁瑜??ㅽ뻾???곗씠?곕? 癒쇱? ?섏쭛?섍굅??留덉씠洹몃젅?댁뀡 ?ㅽ겕由쏀듃瑜??꾨즺??二쇱꽭??")
+# Data load check
+if df_raw.empty:
+    st.error("Could not load the data file. Please check that 'data/yes24_it_mobile_bestsellers.csv' exists.")
+    st.info("Run the scraper/migration script first to generate the data file.")
     st.stop()
 
-# 3. ?ъ씠?쒕컮 ?붿옄??with st.sidebar:
-    st.markdown("### ?뱤 **??쒕낫???ㅼ젙**")
-    st.write("YES24 IT/紐⑤컮??踰좎뒪?몄????곗씠?곕? 諛뷀깢?쇰줈 ?묒꽦???먯깋??遺꾩꽍 ??쒕낫?쒖엯?덈떎.")
+# 3. Sidebar settings
+with st.sidebar:
+    st.markdown("### ⚙️ **App Settings**")
+    st.write("This app analyzes YES24 IT/Mobile bestseller data and provides book recommendations.")
     st.markdown("---")
     
-    # ?꾪꽣 湲곕뒫 ?쒓났
-    st.markdown("?뵇 **異쒗뙋???꾪꽣 (?ㅼ쨷 ?좏깮)**")
+    # Filter feature
+    st.markdown("🔍 **Publisher Filter (multi-select)**")
     publishers = sorted(df_raw['Publisher'].dropna().unique())
-    selected_publishers = st.multiselect("異쒗뙋?щ? ?좏깮?섏꽭??(誘몄꽑?????꾩껜 議고쉶)", publishers)
+    selected_publishers = st.multiselect("Select publishers (empty = all)", publishers)
     
-    st.markdown("?뫀 **????꾪꽣 (寃???ы븿)**")
-    author_query = st.text_input("????대쫫???낅젰?섏꽭??(?ы븿 寃??", "")
+    st.markdown("🔍 **Author Filter (search)**")
+    author_query = st.text_input("Enter author name (partial match)", "")
     
     st.markdown("---")
-    st.markdown("?뱦 **?곗씠??媛쒖슂**")
-    st.markdown(f"- **珥??섏쭛 ?꾩꽌 ??*: `{len(df_raw)}` 沅?)
-    st.markdown(f"- **?됯퇏 ?먮ℓ 媛寃?*: `{int(df_raw['Sale Price'].mean()):,}??")
-    st.markdown(f"- **?됯퇏 ?꾩꽌 ?됱젏**: `??{df_raw['Rating'].mean():.2f} / 10.0`")
+    st.markdown("📊 **Data Overview**")
+    st.markdown(f"- **Total books**: `{len(df_raw)}`")
+    st.markdown(f"- **Average sale price**: `{int(df_raw['Sale Price'].mean()):,}` KRW")
+    st.markdown(f"- **Average rating**: `{df_raw['Rating'].mean():.2f} / 10.0`")
 
-# ?꾪꽣留??곸슜
+# Filtering logic
 df_filtered = df_raw.copy()
 if selected_publishers:
     df_filtered = df_filtered[df_filtered['Publisher'].isin(selected_publishers)]
 if author_query:
     df_filtered = df_filtered[df_filtered['Author'].astype(str).str.contains(author_query, case=False, na=False)]
 
-# 4. 蹂몃Ц 硫붿씤 ??댄? 諛??뚭컻
-st.markdown('<div class="main-title">YES24 IT/紐⑤컮??踰좎뒪?몄?????쒕낫??/div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">?섏쭛??IT 紐⑤컮???꾩꽌 踰좎뒪?몄??щ? 諛뷀깢?쇰줈 ???먯깋???곗씠??遺꾩꽍(EDA) 諛??ㅼ썙??湲곕컲 ?꾩꽌 ?곸꽭 寃???쒕퉬?ㅼ엯?덈떎.</div>', unsafe_allow_html=True)
+# 4. Main content introduction
+st.markdown('<div class="main-title">YES24 IT / Mobile Bestseller Analysis</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Explore YES24 IT/Mobile bestseller data through EDA and AI-powered book search.</div>', unsafe_allow_html=True)
 
-# ???섎늻湲?tab_eda, tab_search, tab_chat = st.tabs(["?뱤 ?먯깋???곗씠??遺꾩꽍 (EDA)", "?뵇 ?꾩꽌 ?ㅼ썙??寃???붿쭊", "?뮠 ?꾩꽌 異붿쿇 梨쀫큸"])
+# Create tabs
+tab_eda, tab_search, tab_chat = st.tabs(["📊 Data Analysis (EDA)", "🔎 Book Search", "🤖 Book Recommendation Chatbot"])
 
 # ==========================================
-# Tab 1: ?먯깋???곗씠??遺꾩꽍 (EDA)
+# Tab 1: Data Analysis (EDA)
 # ==========================================
 with tab_eda:
-    st.markdown("### ?뱢 **IT/紐⑤컮??踰좎뒪?몄????듭떖 ?몃젋??遺꾩꽍**")
+    st.markdown("### 📈 **IT / Mobile Bestseller Core Trend Analysis**")
     
-    # 4.1 ?듭떖 KPI 移대뱶 ?곸뿭
+    # 4.1 Core KPI cards
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">?꾩껜 ?꾩꽌 ??/div>
-            <div class="metric-value">{len(df_filtered):,}沅?/div>
+            <div class="metric-title">Total Books</div>
+            <div class="metric-value">{len(df_filtered):,}</div>
         </div>
         """, unsafe_allow_html=True)
     with col2:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">?됯퇏 ?됱젏</div>
-            <div class="metric-value">??{df_filtered['Rating'].mean():.2f}</div>
+            <div class="metric-title">Average Rating</div>
+            <div class="metric-value">{df_filtered['Rating'].mean():.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     with col3:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">?됯퇏 ?먮ℓ媛</div>
-            <div class="metric-value">{int(df_filtered['Sale Price'].mean()):,}??/div>
+            <div class="metric-title">Avg Sale Price</div>
+            <div class="metric-value">{int(df_filtered['Sale Price'].mean()):,} KRW</div>
         </div>
         """, unsafe_allow_html=True)
     with col4:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">理쒓퀬 ?먮ℓ吏??/div>
+            <div class="metric-title">Max Sale Index</div>
             <div class="metric-value">{int(df_filtered['Sale Index'].max()):,}</div>
         </div>
         """, unsafe_allow_html=True)
         
     st.markdown("---")
     
-    # 4.2 ?쒓컖??洹몃━??諛곗튂
+    # 4.2 Visualization layout
     vis_col1, vis_col2 = st.columns(2)
     
-    # ?쒓컖??1: 媛寃⑸? 遺꾩꽍 (?뺢? vs ?먮ℓ媛 BoxPlot)
+    # Chart 1: Price distribution (Original vs Sale Price BoxPlot)
     with vis_col1:
-        st.markdown("#### ?뮫 **?꾩꽌 媛寃⑸? 遺꾪룷 遺꾩꽍**")
+        st.markdown("#### 📦 **Book Price Distribution Analysis**")
         price_melted = df_filtered.melt(
             id_vars=['Title'], 
             value_vars=['Original Price', 'Sale Price'], 
@@ -238,8 +242,8 @@ with tab_eda:
             value_name='Price'
         )
         price_melted['Price Type'] = price_melted['Price Type'].map({
-            'Original Price': '?뺢?', 
-            'Sale Price': '?먮ℓ媛'
+            'Original Price': 'Original', 
+            'Sale Price': 'Sale'
         })
         
         fig_price = px.box(
@@ -248,30 +252,30 @@ with tab_eda:
             y='Price', 
             color='Price Type',
             points="all",
-            color_discrete_map={'?뺢?': '#95a5a6', '?먮ℓ媛': '#6c5ce7'},
-            title="?꾩꽌 ?뺢?? ?먮ℓ媛 遺꾪룷 鍮꾧탳"
+            color_discrete_map={'Original': '#95a5a6', 'Sale': '#6c5ce7'},
+            title="Original vs Sale Price Distribution"
         )
         fig_price.update_layout(
-            xaxis_title="媛寃?援щ텇", 
-            yaxis_title="媛寃?(??", 
+            xaxis_title="Price Type", 
+            yaxis_title="Price (KRW)", 
             showlegend=False,
             template="plotly_white"
         )
         st.plotly_chart(fig_price, use_container_width=True)
 
-    # ?쒓컖??2: ?좎씤??鍮꾩쨷 遺꾩꽍
+    # Chart 2: Discount rate distribution
     with vis_col2:
-        st.markdown("#### ?뤇截?**?좎씤??Discount Rate) ?듦퀎**")
+        st.markdown("#### 📉 **Discount Rate Statistics**")
         discount_counts = df_filtered['Discount Rate'].value_counts().reset_index()
-        discount_counts.columns = ['?좎씤??, '?꾩꽌 ??]
+        discount_counts.columns = ['Discount Rate', 'Book Count']
         
         fig_discount = px.pie(
             discount_counts,
-            values='?꾩꽌 ??,
-            names='?좎씤??,
+            values='Book Count',
+            names='Discount Rate',
             hole=0.4,
             color_discrete_sequence=px.colors.qualitative.Pastel,
-            title="?좎씤?⑤퀎 ?꾩꽌 鍮꾩쨷"
+            title="Book Share by Discount Rate"
         )
         fig_discount.update_traces(textposition='inside', textinfo='percent+label')
         fig_discount.update_layout(template="plotly_white")
@@ -280,33 +284,34 @@ with tab_eda:
     st.markdown("---")
     vis_col3, vis_col4 = st.columns(2)
     
-    # ?쒓컖??3: 異쒗뙋?щ퀎 踰좎뒪?몄????먯쑀??TOP 10
+    # Chart 3: Top 10 publishers by book count
     with vis_col3:
-        st.markdown("#### ?룫 **二쇱슂 異쒗뙋??TOP 10**")
+        st.markdown("#### 🏢 **Top 10 Publishers**")
         pub_counts = df_filtered['Publisher'].value_counts().head(10).reset_index()
-        pub_counts.columns = ['異쒗뙋??, '?꾩꽌 ??]
+        pub_counts.columns = ['Publisher', 'Book Count']
         
         fig_pub = px.bar(
             pub_counts,
-            y='異쒗뙋??,
-            x='?꾩꽌 ??,
+            y='Publisher',
+            x='Book Count',
             orientation='h',
-            text='?꾩꽌 ??,
-            color='?꾩꽌 ??,
+            text='Book Count',
+            color='Book Count',
             color_continuous_scale='Purples',
-            title="踰좎뒪?몄????깅줉 ?꾩꽌媛 媛??留롮? 異쒗뙋??TOP 10"
+            title="Top 10 Publishers by Registered Book Count"
         )
         fig_pub.update_layout(
             yaxis={'categoryorder': 'total ascending'},
-            xaxis_title="?깅줉 ?꾩꽌 ??(沅?",
-            yaxis_title="異쒗뙋?щ챸",
+            xaxis_title="Book Count",
+            yaxis_title="Publisher Name",
             template="plotly_white",
             coloraxis_showscale=False
         )
         st.plotly_chart(fig_pub, use_container_width=True)
         
-    # ?쒓컖??4: ?됱젏 vs ?먮ℓ吏???곴?愿怨??곗젏??    with vis_col4:
-        st.markdown("#### ?뱢 **?됱젏怨??먮ℓ吏??Sale Index) ?곴?愿怨?*")
+    # Chart 4: Rating vs Sale Index correlation
+    with vis_col4:
+        st.markdown("#### ⭐ **Rating vs Sale Index (Correlation)**")
         fig_scatter = px.scatter(
             df_filtered,
             x='Rating',
@@ -316,64 +321,62 @@ with tab_eda:
             hover_name='Title',
             hover_data=['Author', 'Publisher', 'Sale Price'],
             color_continuous_scale='Viridis',
-            title="?됱젏怨??먮ℓ吏?? 洹몃━怨?由щ럭 ?섏쓽 愿怨?
+            title="Rating vs Sale Index Scatter"
         )
         fig_scatter.update_layout(
-            xaxis_title="?됱젏 (??",
-            yaxis_title="?먮ℓ吏??(Sale Index)",
+            xaxis_title="Rating (0-10)",
+            yaxis_title="Sale Index",
             template="plotly_white"
         )
         st.plotly_chart(fig_scatter, use_container_width=True)
 
     st.markdown("---")
     
-    # ?쒓컖??5: 異쒗뙋 ?몃젋??(?붾퀎 異쒗뙋 沅뚯닔 蹂??
-    st.markdown("#### ?뱟 **異쒗뙋 ?쒓린蹂??몃젋??遺꾩꽍**")
+    # Chart 5: Publisher trend (book count by publish month)
+    st.markdown("#### 📅 **Publisher Trend Analysis**")
     if 'Publish YearMonth' in df_filtered.columns:
-        trend_df = df_filtered.groupby('Publish YearMonth').size().reset_index(name='?꾩꽌 ??)
-        # 理쒓렐 24媛쒖썡(?뱀? ?곗씠??踰붿쐞 ?? ?꾪꽣留?        trend_df = trend_df.sort_values('Publish YearMonth')
+        trend_df = df_filtered.groupby('Publish YearMonth').size().reset_index(name='Book Count')
+        trend_df = trend_df.sort_values('Publish YearMonth')
         
         fig_trend = px.line(
             trend_df,
             x='Publish YearMonth',
-            y='?꾩꽌 ??,
+            y='Book Count',
             markers=True,
             line_shape='spline',
             color_discrete_sequence=['#20bf6b'],
-            title="異쒗뙋 ?붾퀎 踰좎뒪?몄????깅줉 ?꾩꽌 異붿씠"
+            title="Registered Book Count Trend by Publish Month"
         )
         fig_trend.update_layout(
-            xaxis_title="異쒗뙋 ?곗썡",
-            yaxis_title="踰좎뒪?몄????깅줉 ??(沅?",
+            xaxis_title="Publish Year-Month",
+            yaxis_title="Book Count",
             template="plotly_white"
         )
         st.plotly_chart(fig_trend, use_container_width=True)
     else:
-        st.info("異쒗뙋???뺤떇 臾몄젣濡??명빐 ?쒓린蹂??몃젋?쒕? ?쒓컖?뷀븷 ???놁뒿?덈떎.")
+        st.info("Trend analysis is unavailable due to a date parsing issue.")
 
 # ==========================================
-# Tab 2: ?꾩꽌 ?ㅼ썙??寃???붿쭊
+# Tab 2: Book Search
 # ==========================================
 with tab_search:
-    st.markdown("### ?뵇 **?듯빀 ?꾩꽌 寃???쒕퉬??*")
-    st.write("梨낆쓽 **?쒕ぉ**怨??곸꽭 **?댁슜(?뚭컻湲)** ?꾨컲?먯꽌 寃?됲븯?ㅻ뒗 ?ㅼ썙?쒕? ?낅젰??蹂댁꽭??")
+    st.markdown("### 🔎 **Book Search**")
+    st.write("Search books by **title** or **description** (content).")
     
-    # 寃???낅젰 而댄룷?뚰듃
+    # Search input components
     search_col1, search_col2 = st.columns([3, 1])
     with search_col1:
-        query = st.text_input("寃?됲븷 ?ㅼ썙?쒕? ?낅젰?섏꽭??(?? ?뚯씠?? ?대줈?? 癒몄떊?щ떇, 肄붾뵫)", "", key="search_query")
+        query = st.text_input("Enter keyword to search (e.g. machine learning, coding)", "", key="search_query")
     with search_col2:
         sort_by = st.selectbox(
-            "?뺣젹 湲곗?",
-            ["?쒖쐞??(?ㅻ쫫李⑥닚)", "?먮ℓ吏?섏닚 (?대┝李⑥닚)", "?됱젏??(?대┝李⑥닚)", "由щ럭 留롮? ??(?대┝李⑥닚)", "媛寃???? ??, "媛寃??믪? ??]
+            "Sort By",
+            ["Rank (Ascending)", "Sale Index (Descending)", "Rating (Descending)", "Review Count (Descending)", "Price (Ascending)", "Price (Descending)"]
         )
         
     st.markdown("---")
     
-    # ?ㅼ썙???꾪꽣留?濡쒖쭅
+    # Search filter logic
     if query:
-        # ?쒕ぉ ?뱀? ?댁슜?먯꽌 ?대떦 ?ㅼ썙??留ㅼ묶
-        # ??뚮Ц??援щ텇 ?놁쓬
         search_filter = (
             df_filtered['Title'].astype(str).str.contains(query, case=False, na=False) |
             df_filtered['Description'].astype(str).str.contains(query, case=False, na=False)
@@ -382,99 +385,101 @@ with tab_search:
     else:
         search_results = df_filtered.copy()
         
-    # ?뺣젹 諛⑹떇 ?곸슜
-    if sort_by == "?쒖쐞??(?ㅻ쫫李⑥닚)":
+    # Sort logic
+    if sort_by == "Rank (Ascending)":
         search_results = search_results.sort_values('Rank', ascending=True)
-    elif sort_by == "?먮ℓ吏?섏닚 (?대┝李⑥닚)":
+    elif sort_by == "Sale Index (Descending)":
         search_results = search_results.sort_values('Sale Index', ascending=False)
-    elif sort_by == "?됱젏??(?대┝李⑥닚)":
+    elif sort_by == "Rating (Descending)":
         search_results = search_results.sort_values('Rating', ascending=False)
-    elif sort_by == "由щ럭 留롮? ??(?대┝李⑥닚)":
+    elif sort_by == "Review Count (Descending)":
         search_results = search_results.sort_values('Review Count', ascending=False)
-    elif sort_by == "媛寃???? ??:
+    elif sort_by == "Price (Ascending)":
         search_results = search_results.sort_values('Sale Price', ascending=True)
-    elif sort_by == "媛寃??믪? ??:
+    elif sort_by == "Price (Descending)":
         search_results = search_results.sort_values('Sale Price', ascending=False)
         
-    # 寃??寃곌낵 媛쒖닔 異쒕젰
-    st.markdown(f"?뮕 寃??議곌굔??遺?⑺븯???꾩꽌媛 珥?**{len(search_results)}** 沅?寃?됰릺?덉뒿?덈떎.")
+    # Result count
+    st.markdown(f"Found **{len(search_results)}** books matching the search condition.")
     
-    # 寃??寃곌낵 ?꾩꽌 移대뱶 ?뚮뜑留?    if search_results.empty:
-        st.warning("?쇱튂?섎뒗 ?꾩꽌媛 ?놁뒿?덈떎. ?ㅻⅨ 寃?됱뼱濡??쒕룄??二쇱꽭??")
+    # Result book cards
+    if search_results.empty:
+        st.warning("No books found. Please try a different keyword.")
     else:
         for idx, row in search_results.iterrows():
-            # ?됱젏 蹂꾩젏 臾몄옄???앹꽦
-            stars = "?? * int(round(row['Rating']/2)) if pd.notna(row['Rating']) else ""
-            rating_text = f"??{row['Rating']:.1f}" if pd.notna(row['Rating']) and row['Rating'] > 0 else "?됱젏 ?놁쓬"
+            # Rating stars text
+            stars = "⭐" * int(round(row['Rating']/2)) if pd.notna(row['Rating']) else ""
+            rating_text = f"{row['Rating']:.1f}" if pd.notna(row['Rating']) and row['Rating'] > 0 else "No rating"
             
-            # 移대뱶 援ъ“ ?뚮뜑留?            with st.container():
+            # Card structure
+            with st.container():
                 st.markdown(f"""
                 <div class="book-card">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
-                        <span style="background-color: #6c5ce7; color: white; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">踰좎뒪?몄???{int(row['Rank'])}??/span>
+                        <span style="background-color: #6c5ce7; color: white; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">Rank {int(row['Rank'])}</span>
                         <span style="color: #fdcb6e; font-weight: 600;">{stars} ({rating_text})</span>
                     </div>
                     <h4 style="margin: 0.3rem 0; color: #2d3436; font-size: 1.25rem;">{row['Title']}</h4>
                     <p style="margin: 0.2rem 0; color: #636e72; font-size: 0.9rem;">
-                        ??? <strong>{row['Author']}</strong> | 異쒗뙋?? <strong>{row['Publisher']}</strong> | 異쒗뙋?? <strong>{row['Publish Date']}</strong>
+                        Author: <strong>{row['Author']}</strong> | Publisher: <strong>{row['Publisher']}</strong> | Published: <strong>{row['Publish Date']}</strong>
                     </p>
                     <div style="margin: 0.5rem 0; display: flex; gap: 1rem; align-items: center;">
-                        <span style="font-size: 1.1rem; font-weight: 700; color: #d63031;">{int(row['Sale Price']):,}??/span>
-                        <span style="font-size: 0.9rem; text-decoration: line-through; color: #b2bec3;">{int(row['Original Price']):,}??/span>
-                        <span style="font-size: 0.85rem; background-color: #ffeaa7; color: #d63031; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 600;">{row['Discount Rate']} ?좎씤</span>
-                        <span style="font-size: 0.85rem; color: #74b9ff;">?먮ℓ吏?? {int(row['Sale Index']):,}</span>
-                        <span style="font-size: 0.85rem; color: #a8e6cf;">由щ럭 ?? {int(row['Review Count'])}</span>
+                        <span style="font-size: 1.1rem; font-weight: 700; color: #d63031;">{int(row['Sale Price']):,} KRW</span>
+                        <span style="font-size: 0.9rem; text-decoration: line-through; color: #b2bec3;">{int(row['Original Price']):,} KRW</span>
+                        <span style="font-size: 0.85rem; background-color: #ffeaa7; color: #d63031; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 600;">{row['Discount Rate']} off</span>
+                        <span style="font-size: 0.85rem; color: #74b9ff;">Sale Index {int(row['Sale Index']):,}</span>
+                        <span style="font-size: 0.85rem; color: #a8e6cf;">Reviews {int(row['Review Count'])}</span>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 梨??곸꽭 ?뺣낫 (Description) 諛?留곹겕
-                with st.expander("?뱰 梨??뚭컻 諛??곸꽭 ?댁슜 蹂닿린"):
+                # Detail info (Description) expander
+                with st.expander("View Book Description"):
                     st.write(row['Description'])
-                    st.markdown(f"[?뵕 YES24 ?곸꽭?섏씠吏濡??대룞?섍린]({row['Detail Link']})")
+                    st.markdown(f"[Open YES24 Detail Page]({row['Detail Link']})")
                 
                 st.markdown("<div style='margin-bottom: 1.5rem;'></div>", unsafe_allow_html=True)
 
 # ==========================================
-# Tab 3: ?꾩꽌 異붿쿇 梨쀫큸 (RAG - ChromaDB + Groq)
+# Tab 3: Book Recommendation Chatbot (RAG - ChromaDB + Groq)
 # ==========================================
 with tab_chat:
-    st.markdown("### ?뮠 **AI ?꾩꽌 異붿쿇 梨쀫큸 (RAG)**")
-    st.write("ChromaDB 踰≫꽣 寃?됱쑝濡??꾩껜 1000沅뚯뿉??愿???꾩꽌瑜?李얠븘 AI媛 異붿쿇?⑸땲??")
+    st.markdown("### 🤖 **AI Book Recommendation Chatbot (RAG)**")
+    st.write("Finds books related to your query from the ChromaDB vector store (1000 books) and recommends them via AI.")
 
-    with st.expander("?뵎 Groq API Key ?ㅼ젙", expanded=not st.session_state.get("groq_api_key")):
+    with st.expander("🔑 Set Groq API Key", expanded=not st.session_state.get("groq_api_key")):
         api_key = st.text_input(
-            "Groq API Key瑜??낅젰?섏꽭??,
+            "Enter your Groq API Key",
             type="password",
             value=st.session_state.get("groq_api_key", ""),
             key="groq_api_key_input",
-            help="https://console.groq.com/keys ?먯꽌 諛쒓툒諛쏆쓣 ???덉뒿?덈떎."
+            help="Get your key from https://console.groq.com/keys"
         )
         if api_key:
             st.session_state.groq_api_key = api_key
         if not st.session_state.get("groq_api_key"):
-            st.warning("Groq API Key瑜??낅젰??二쇱꽭??")
+            st.warning("Please enter your Groq API Key.")
 
     if "embedding_ready" not in st.session_state:
         st.session_state.embedding_ready = False
 
-    with st.expander("踰≫꽣DB 愿由?, expanded=False):
+    with st.expander("Vector DB Management", expanded=False):
         col1, col2 = st.columns([3, 1])
         with col1:
-            if st.button("?꾨쿋???몃뜳??援ъ텞 (泥섏쓬 1??"):
-                with st.spinner("ChromaDB ?꾨쿋?????以?.."):
+            if st.button("Build Vector Index (first time only)"):
+                with st.spinner("Building ChromaDB index..."):
                     from embedding_store import EmbeddingStore
                     store = EmbeddingStore()
                     count = store.build_index(df_raw)
                     st.session_state.embedding_store = store
                     st.session_state.embedding_ready = True
-                    st.success(f"{count}沅?????꾨즺!")
+                    st.success(f"Indexed {count} books!")
         with col2:
-            st.markdown("?곹깭: " + ("以鍮꾨맖" if st.session_state.embedding_ready else "誘멸뎄異?))
+            st.markdown("Status: " + ("Ready" if st.session_state.embedding_ready else "Not ready"))
 
     st.markdown("---")
 
-    if st.button("???珥덇린??):
+    if st.button("🗑️ Reset Chat"):
         st.session_state.chat_messages = []
         st.rerun()
 
@@ -485,12 +490,12 @@ with tab_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    if prompt := st.chat_input("李얘퀬 ?띠? ?꾩꽌瑜??ㅻ챸??二쇱꽭??):
+    if prompt := st.chat_input("Describe the book you are looking for"):
         if not st.session_state.get("groq_api_key"):
-            st.error("Groq API Key瑜?癒쇱? ?낅젰??二쇱꽭??")
+            st.error("Please enter your Groq API Key first.")
             st.stop()
         if not st.session_state.get("embedding_ready"):
-            st.error("癒쇱? '?꾨쿋???몃뜳??援ъ텞' 踰꾪듉???뚮윭 二쇱꽭??")
+            st.error("Please click 'Build Vector Index' first.")
             st.stop()
 
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
@@ -503,27 +508,28 @@ with tab_chat:
         if results:
             lines = []
             for r in results:
-                link = f"[YES24?먯꽌 蹂닿린]({r['detail_link']})" if r.get("detail_link") else "留곹겕?놁쓬"
+                link = f"[YES24 Book Link]({r['detail_link']})" if r.get("detail_link") else "No link"
                 lines.append(
-                    f"- ?쒕ぉ: {r['title']} | ??? {r['author']} | 異쒗뙋?? {r['publisher']} "
-                    f"| 媛寃? {r['sale_price']:,}??| ?됱젏: {r['rating']}/10 | 留곹겕: {link}\n"
-                    f"  愿?⑤궡?? {r['document'][:200]}"
+                    f"- Title: {r['title']} | Author: {r['author']} | Publisher: {r['publisher']} "
+                    f"| Price: {r['sale_price']:,} KRW | Rating: {r['rating']}/10 | Link: {link}\n"
+                    f"  Content: {r['document'][:200]}"
                 )
-            context = "踰≫꽣 寃??寃곌낵:\n\n" + "\n\n".join(lines)
+            context = "Vector search results:\n\n" + "\n\n".join(lines)
         else:
-            context = "寃??寃곌낵媛 ?놁뒿?덈떎."
+            context = "No search results found."
 
-        system_prompt = f"""?뱀떊? YES24 IT/紐⑤컮??踰좎뒪?몄????꾩꽌 異붿쿇 ?꾨Ц媛?낅땲??
-?꾨옒??ChromaDB濡?李얠? 愿???꾩꽌?낅땲??
+        system_prompt = f"""You are a YES24 IT/Mobile book recommendation expert.
+Based on the books found in ChromaDB, recommend the most relevant books to the user.
 
 {context}
 
-**洹쒖튃:**
-1. ???뺣낫?먯꽌 ?ъ슜??吏덈Ц怨?媛??愿???덈뒗 ?꾩꽌瑜?異붿쿇?섏꽭??
-2. 梨??쒕ぉ, ??? 異쒗뙋?? ?먮ℓ媛, ?됱젏, 異붿쿇 ?댁쑀瑜??ы븿?섍퀬 留곹겕??[YES24?먯꽌 蹂닿린](URL) ?뺤떇?쇰줈 二쇱꽭??
-3. 愿???꾩꽌媛 ?놁쑝硫?"?꾩옱 蹂댁쑀???곗씠?곗뿉??議곌굔??留욌뒗 ?꾩꽌瑜?李얠쓣 ???놁뒿?덈떎."?쇨퀬 ?듬??섏꽭??
-4. ?꾩꽌 ??吏덈Ц?먮뒗 "?꾩꽌 愿??吏덈Ц留?諛쏆쓣 ???덉뒿?덈떎."?쇨퀬 ?듬??섏꽭??
-5. ?듬?? ?쒓뎅?대줈 ?댁＜?몄슂."""
+**Rules:**
+1. Recommend books related to the user's question based on the retrieved content.
+2. Include title, author, publisher, sale price, rating, and recommendation reason, and provide the link in [YES24 Book Link](URL) format.
+3. If there are no related books, say "I could not find a book matching your condition in the current database."
+4. If the question is not about books, say "I can only answer book-related questions."
+5. Please answer in Korean.
+"""
 
         try:
             client = Groq(api_key=st.session_state.groq_api_key)
@@ -538,7 +544,7 @@ with tab_chat:
             )
             reply = response.choices[0].message.content
         except Exception as e:
-            reply = f"API ?몄텧 ?ㅻ쪟: {str(e)}"
+            reply = f"API call error: {str(e)}"
 
         st.session_state.chat_messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
