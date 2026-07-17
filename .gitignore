@@ -12,6 +12,9 @@ data/chroma_db/
 data/chroma_test/
 data/chromadb_test/
 data/test_db/
+data/*.xlsx
+output/
+*.pptx
 .vscode/
 .opencode/
 *.log
